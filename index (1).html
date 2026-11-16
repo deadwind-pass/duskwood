@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stock Desk">
+<meta name="theme-color" content="#1c1f38">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<title>Stock Desk</title>
+<style>
+html,body{height:100%}
+body{margin:0;font:15px/1.5 -apple-system,system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;color:#e8e9f3;background:linear-gradient(170deg,#2a2f55,#14151f 70%);display:grid;place-items:center;padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px));box-sizing:border-box}
+.card{width:100%;max-width:380px;padding:22px;border-radius:22px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);box-shadow:0 18px 50px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.12);-webkit-backdrop-filter:blur(22px) saturate(1.4);backdrop-filter:blur(22px) saturate(1.4);box-sizing:border-box}
+h1{font-size:20px;margin:0 0 4px}p{margin:0 0 14px;color:#aab0c4;font-size:13.5px}
+label{display:block;font-size:12.5px;color:#aab0c4;margin:12px 0 5px}
+input{width:100%;box-sizing:border-box;font:inherit;font-size:16px;color:#fff;padding:11px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.07);outline:none;transition:border-color .15s}
+input:focus{border-color:#5b9bff}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px 16px;cursor:pointer;transition:opacity .15s,transform .1s}button:active{transform:scale(.98)}
+.go{width:100%;margin-top:18px;background:#3b82f6;color:#fff}.ghost{background:rgba(255,255,255,.1);color:#e8e9f3}
+.row{display:flex;gap:10px;margin-top:16px}.row button{flex:1}
+.err{color:#fca5a5;font-size:13.5px;margin-top:12px;min-height:1em;white-space:pre-wrap}
+.spin{width:30px;height:30px;border:3px solid rgba(255,255,255,.2);border-top-color:#8ab4ff;border-radius:50%;margin:6px auto 14px;animation:r 1s linear infinite}@keyframes r{to{transform:rotate(360deg)}}
+.c{text-align:center}.note{font-size:12px;color:#8d93a8;margin-top:14px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="card" id="setup" hidden>
+  <h1>Stock Desk</h1>
+  <p>第一次使用：輸入 Apps Script 的網址和 KEY。只存在這台裝置，不會上傳到別的地方。</p>
+  <label for="u">Apps Script 網址（結尾是 /exec）</label>
+  <input id="u" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec">
+  <label for="k">KEY</label>
+  <input id="k" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button class="go" id="save" type="button">開始使用</button>
+  <div class="err" id="serr"></div>
+</div>
+<div class="card c" id="load" hidden>
+  <div class="spin"></div>
+  <div>載入 Stock Desk…</div>
+  <div class="note" id="lnote"></div>
+</div>
+<div class="card" id="fail" hidden>
+  <h1>載入失敗</h1>
+  <div class="err" id="ferr" style="margin-top:0"></div>
+  <div class="row"><button class="go" id="retry" type="button" style="margin-top:0">再試一次</button><button class="ghost" id="reset" type="button">重新設定</button></div>
+</div>
+<script>
+/* Stock Desk 載入頁 v1
+   這一頁本身沒有任何資料。它只做一件事:用存在這台裝置的網址和 KEY,向你的 Apps Script 要最新的 App(?fn=apphtml),拿到後整頁換成 App。
+   網址和 KEY 存在這台裝置瀏覽器的 localStorage(sdl.cfg),不會送到 GitHub 或其他地方。
+   要換網址或 KEY:在網址後面加 #reset 再開一次,或在「載入失敗」畫面按「重新設定」。 */
+(function(){
+  var K='sdl.cfg',$=function(i){return document.getElementById(i)};
+  function get(){try{var c=JSON.parse(localStorage.getItem(K)||'null');return c&&c.url?c:null}catch(e){return null}}
+  function show(id){['setup','load','fail'].forEach(function(x){$(x).hidden=x!==id})}
+  function setup(msg){var c=get()||{};$('u').value=c.url||'';$('k').value=c.key||'';$('serr').textContent=msg||'';show('setup')}
+  function fail(msg){$('ferr').textContent=msg;show('fail')}
+  function load(){var c=get();if(!c)return setup();show('load');$('lnote').textContent='';
+    var slow=setTimeout(function(){$('lnote').textContent='檔案比較大，第一次或網路慢時要等久一點'},6000);
+    var ac=window.AbortController?new AbortController():null,to=setTimeout(function(){if(ac)ac.abort()},90000);
+    fetch(c.url+'?fn=apphtml&key='+encodeURIComponent(c.key||'')+'&_='+Date.now(),{redirect:'follow',cache:'no-store',referrerPolicy:'no-referrer',signal:ac?ac.signal:undefined})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text()})
+      .then(function(h){clearTimeout(to);clearTimeout(slow);
+        if(!h||h.charAt(0)==='{'){var j={};try{j=JSON.parse(h)}catch(e){}throw new Error(j.error||'Apps Script 沒有回傳 App')}
+        if(h.indexOf('<')<0)throw new Error('回傳的內容不是 App');
+        h=h.replace('__SD_URL__',c.url);document.open();document.write(h);document.close()})
+      .catch(function(e){clearTimeout(to);clearTimeout(slow);var m=String(e&&e.message||e);
+        if(/密碼不對|key 不對/.test(m))return setup('KEY 不對，請重新輸入。');
+        fail(e&&e.name==='AbortError'?'超過 90 秒沒有回應。請確認網路後再試一次。':/Failed to fetch|Load failed|NetworkError/i.test(m)?'連不到 Apps Script。\n請確認網路，以及網址是不是部署後的 /exec 網址。':m)})}
+  $('save').onclick=function(){var raw=$('u').value.trim(),u=raw.replace(/[?#].*$/,''),k=$('k').value.trim(),m=/[?&]key=([^&#]+)/.exec(raw);
+    if(!k&&m){try{k=decodeURIComponent(m[1])}catch(e){k=m[1]}$('k').value=k}   /* 貼的是原本那個帶 ?app=1&key=… 的網址:KEY 自動帶入 */
+    if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u))return $('serr').textContent='網址要是 https://script.google.com/…/exec（不要帶 ? 後面的東西）';
+    if(!k)return $('serr').textContent='請輸入 KEY';
+    try{localStorage.setItem(K,JSON.stringify({url:u,key:k}))}catch(e){return $('serr').textContent='這個瀏覽器不能儲存設定（可能是私密瀏覽模式）'}load()};
+  $('k').addEventListener('keydown',function(e){if(e.key==='Enter')$('save').click()});
+  $('retry').onclick=load;$('reset').onclick=function(){setup('')};
+  if(/reset/.test(location.hash)){try{history.replaceState(null,'',location.pathname)}catch(e){}setup('')}else load();
+})();
+</script>
+</body>
+</html>
